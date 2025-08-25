@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Floo - SRM Sentiment</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Floo</h1>
+  <p>Type something about SRM and see how Floo reacts!</p>
+
+  <div id="floo" class="floo-avatar">
+    <img id="neutral-gif" src="Animations/Neutral.gif" alt="Floo Neutral">
+  </div>
+
+  <!-- Input -->
+  <div class="row">
+    <input type="text" id="userInput" placeholder="Say something about SRM..." />
+    <button id="sendBtn">Send</button>
+  </div>
+
+  <p id="response"></p>
+
+  <!-- Trap Overlay -->
+  <div id="trapOverlay" aria-hidden="true">
+    <div class="overlay-card">
+      <h3>Floo trapped your cursor 😡</h3>
+      <p>Too many negative messages in a row. Be nice to SRM or Floo gets mad!</p>
+      <div class="overlay-actions">
+        <button id="calmBtn">Ok, I’ll be nice</button>
+        <button id="resetBtn">Reset streak</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const replies = {
+      neutral: [
+        "Ahh! But do you know, they say I can do 'COOL' things when I get angry",
+        "Yups! But I cannot hear 'BAD' about SRM.",
+        "Hmm, interesting... but can you tell me more?",
+        "I’m just chilling here, floating around.",
+      ],
+      positive: [
+        "Yay! I love hearing good things about SRM! 🎉",
+        "That makes me super happy 😄",
+        "Woohoo! SRM rocks! 🚀",
+        "Your vibes are making me glow brighter! ✨",
+      ],
+      negative: [
+        "Hey! That’s not nice 😡",
+        "Grr... I don’t like when people say that!",
+        "SRM deserves better, don’t you think?",
+        "Careful... I might get really angry! 🔥",
+      ]
+    };
+
+    const CONFIG = { redirectAt: 10, redirectUrl: "https://srmist.edu.in/" };
+    const THRESHOLDS = { warn: 3, trap: 6, shake: 9, redirect: 10 };
+    let negativeStreak = 0, didWarn = false, didTrap = false, didShake = false, didRedirect = false;
+
+    function getRandomReply(type) {
+      const msgs = replies[type] || [];
+      return msgs.length ? msgs[Math.floor(Math.random() * msgs.length)] : "";
+    }
+
+    function showReplyBubble(text) {
+      const floo = document.getElementById("floo");
+      const bubble = document.createElement("div");
+      bubble.className = "reply-bubble";
+      bubble.textContent = text;
+      floo.appendChild(bubble);
+      setTimeout(() => bubble.remove(), 4000);
+    }
+
+    function showTypingBubble() {
+      const floo = document.getElementById("floo");
+      const bubble = document.createElement("div");
+      bubble.className = "reply-bubble typing";
+      bubble.innerHTML = `Floo is reading <span class="dots"><span>.</span><span>.</span><span>.</span></span>`;
+      floo.appendChild(bubble);
+      return bubble;
+    }
+
+    function updateFloo(mood) {
+      const flooDiv = document.getElementById("floo");
+      flooDiv.innerHTML = "";
+      if (mood === "positive") {
+        flooDiv.textContent = "😄";
+        flooDiv.style.background = "#2e7d32";
+      } else if (mood === "negative") {
+        flooDiv.textContent = "😡";
+        flooDiv.style.background = "#b71c1c";
+      } else {
+        const img = document.createElement("img");
+        img.src = "Animations/Neutral.gif";
+        img.alt = "Floo Neutral";
+        flooDiv.appendChild(img);
+        flooDiv.style.background = "#424242";
+      }
+    }
+
+    function triggerShake() {
+      document.body.classList.add("shake");
+      setTimeout(() => document.body.classList.remove("shake"), 600);
+    }
+
+    function showTrap() { document.getElementById("trapOverlay").classList.add("show"); }
+    function hideTrap() { document.getElementById("trapOverlay").classList.remove("show"); }
+
+    function resetStreak() {
+      negativeStreak = 0;
+      didWarn = didTrap = didShake = didRedirect = false;
+      hideTrap();
+    }
+
+    // ✅ Only escalate if it's SRM-related negative
+    function escalate(mood, isAboutSRM) {
+      if (!isAboutSRM) return; // do nothing for non-SRM messages
+
+      if (mood === "negative") {
+        negativeStreak++;
+        if (!didWarn && negativeStreak >= THRESHOLDS.warn) { didWarn = true; alert("Careful! Too much negativity and Floo will get angry. 😠"); }
+        if (!didTrap && negativeStreak >= THRESHOLDS.trap) { didTrap = true; showTrap(); }
+        if (!didShake && negativeStreak >= THRESHOLDS.shake) { didShake = true; triggerShake(); }
+        if (!didRedirect && negativeStreak >= THRESHOLDS.redirect) { didRedirect = true; window.location.href = CONFIG.redirectUrl; }
+      } else resetStreak();
+    }
+
+    async function analyze() {
+      const text = document.getElementById("userInput").value.trim();
+      const responseEl = document.getElementById("response");
+      if (!text) { responseEl.textContent = "⚠️ Please type something first!"; return; }
+
+      responseEl.textContent = "You: " + text;
+      const typingBubble = showTypingBubble();
+      responseEl.textContent = "Floo is reading your text...";
+
+      setTimeout(async () => {
+        typingBubble.remove();
+
+        const isAboutSRM = text.toLowerCase().includes("srm");
+        let mood = "neutral";
+
+        if (!isAboutSRM) {
+          // Non-SRM → neutral always
+          showReplyBubble(getRandomReply("neutral"));
+          updateFloo("neutral");
+          responseEl.textContent = "Hmm... you're talking about something else. Floo only reacts to SRM 😉";
+        } else {
+          try {
+            const res = await fetch("http://localhost:5000/api/analyze", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text }),
+            });
+
+            if (!res.ok) throw new Error("Server error: " + res.status);
+            const data = await res.json();
+            const label = (data.label || "").toLowerCase();
+            const score = data.score;
+
+            if ((label === "pos" || label.includes("positive")) && score > 0.7) mood = "positive";
+            else if ((label === "neg" || label.includes("negative")) && score > 0.7) mood = "negative";
+
+            updateFloo(mood);
+            responseEl.textContent =
+              mood === "positive" ? "Floo is happy! You said something nice."
+            : mood === "negative" ? "Floo is angry! You said something bad."
+            : "Floo is confused. Try saying something else.";
+
+            showReplyBubble(getRandomReply(mood));
+            escalate(mood, isAboutSRM);
+          } catch (err) {
+            console.error("❌ Error talking to server:", err);
+            responseEl.textContent = "⚠️ Error talking to the server. Check console (F12).";
+          }
+        }
+      }, 2000);
+    }
+
+    document.getElementById("sendBtn").addEventListener("click", analyze);
+    document.getElementById("userInput").addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
+    document.getElementById("calmBtn").addEventListener("click", hideTrap);
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      resetStreak(); updateFloo("neutral");
+      document.getElementById("response").textContent = "Okay, reset. Be nice to SRM ✨";
+    });
+  </script>
+</body>
+</html>
