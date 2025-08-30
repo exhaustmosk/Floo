@@ -87,8 +87,11 @@
       const flooDiv = document.getElementById("floo");
       flooDiv.innerHTML = "";
       if (mood === "positive") {
-        flooDiv.textContent = "😄";
-        flooDiv.style.background = "#2e7d32";
+        const img = document.createElement("img");
+        img.src = "Animations/Positive.gif";
+        img.alt = "Floo Positive";
+        flooDiv.appendChild(img);
+        flooDiv.style.background = "#214118.";
       } else if (mood === "negative") {
         flooDiv.textContent = "😡";
         flooDiv.style.background = "#b71c1c";
